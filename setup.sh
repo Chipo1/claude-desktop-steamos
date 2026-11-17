@@ -169,6 +169,91 @@ if [ "$EXPORT" = "1" ]; then
 fi
 INNER
 
+# Runs inside the container. Copies Claude's icon to ~/.local/share/icons (shared
+# home), so SteamOS can show it even while Claude isn't running. Without this,
+# pinned taskbar entries and the app menu show a blank icon.
+read -r -d '' ICON_SCRIPT <<'INNER' || true
+set -euo pipefail
+DEST="$HOME/.local/share/icons"
+DESKTOP="$(dpkg -L claude-desktop 2>/dev/null | grep -m1 '^/usr/share/applications/.*\.desktop$' || true)"
+if [ -z "$DESKTOP" ]; then
+  echo "warning: couldn't find Claude's menu entry in the container; icon not copied." >&2
+  exit 0
+fi
+ICON="$(grep -m1 '^Icon=' "$DESKTOP" | cut -d= -f2-)"
+case "$ICON" in
+  "") echo "warning: Claude's menu entry names no icon; icon not copied." >&2; exit 0 ;;
+  /*) echo "warning: Claude's icon is a fixed path ($ICON); icon not copied." >&2; exit 0 ;;
+esac
+COPIED=0
+while IFS= read -r SRC; do
+  case "$SRC" in
+    /usr/share/icons/*)   REL="${SRC#/usr/share/icons/}" ;;
+    /usr/share/pixmaps/*) REL="${SRC##*/}" ;;
+    *) continue ;;
+  esac
+  mkdir -p "$DEST/$(dirname "$REL")"
+  cp -f "$SRC" "$DEST/$REL"
+  COPIED=$((COPIED + 1))
+done < <(find /usr/share/icons /usr/share/pixmaps -type f -name "${ICON}.*" 2>/dev/null)
+# Fallback: the package may keep its icon somewhere else.
+if [ "$COPIED" -eq 0 ]; then
+  while IFS= read -r SRC; do
+    case "$SRC" in
+      *.svg) REL="hicolor/scalable/apps/${ICON}.svg" ;;
+      *.png) REL="hicolor/256x256/apps/${ICON}.png" ;;
+      *) continue ;;
+    esac
+    mkdir -p "$DEST/$(dirname "$REL")"
+    cp -f "$SRC" "$DEST/$REL"
+    COPIED=$((COPIED + 1))
+  done < <(dpkg -L claude-desktop 2>/dev/null | grep -E "/${ICON}\.(png|svg)$" || true)
+fi
+if [ "$COPIED" -eq 0 ]; then
+  echo "warning: no icon files named '$ICON' found in the container." >&2
+else
+  echo "==> Copied Claude's icon ($COPIED files) to ~/.local/share/icons"
+fi
+INNER
+
+# Runs a script inside the container. It goes through a temp file in $HOME,
+# which the container shares.
+CURRENT_TMP=""
+cleanup() { [ -z "$CURRENT_TMP" ] || rm -f "$CURRENT_TMP"; }
+trap cleanup EXIT
+run_in_container() {
+  local script="$1" rc=0
+  shift
+  CURRENT_TMP="$(mktemp "$HOME/.claude-desktop-steamos.XXXXXX")"
+  printf '%s\n' "$script" > "$CURRENT_TMP"
+  distrobox enter "$CONTAINER_NAME" -- bash "$CURRENT_TMP" "$@" || rc=$?
+  rm -f "$CURRENT_TMP"
+  CURRENT_TMP=""
+  return "$rc"
+}
+
+# Exported menu entries that start Claude from this container. The file name
+# depends on the package (it was claude-desktop.desktop, now
+# com.anthropic.Claude.desktop), so match on the Exec line instead.
+claude_desktop_files() {
+  local f
+  for f in "$HOME/.local/share/applications/${CONTAINER_NAME}-"*.desktop; do
+    [ -f "$f" ] || continue
+    if grep -Eq -- "-n +${CONTAINER_NAME} +-- +claude-desktop( |\$)" "$f"; then
+      printf '%s\n' "$f"
+    fi
+  done
+}
+
+copy_icons() {
+  run_in_container "$ICON_SCRIPT" || warn "Couldn't copy Claude's icon; it may look blank while Claude is closed."
+  # Nudge KDE to notice the new icon files.
+  touch "$HOME/.local/share/icons" "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
+  if command -v kbuildsycoca6 >/dev/null 2>&1; then
+    kbuildsycoca6 >/dev/null 2>&1 || true
+  fi
+}
+
 # D-Bus name of the keyring service for the chosen password store.
 keyring_service() {
   case "$PASSWORD_STORE" in
@@ -206,14 +291,13 @@ EOF
 # the extra actions (New chat / New code session) too.
 patch_desktop_files() {
   local f found=0
-  for f in "$HOME/.local/share/applications/${CONTAINER_NAME}-"*claude*.desktop; do
-    [ -f "$f" ] || continue
+  while IFS= read -r f; do
     found=1
     sed -i -E "s#^Exec=[^ ]*distrobox-enter #Exec=${LAUNCHER} #" "$f"
     if [ "$PASSWORD_STORE" != "detect" ]; then
       sed -i -E "/password-store=/! s#(-- +claude-desktop) \"claude://#\1 --password-store=${PASSWORD_STORE} \"claude://#" "$f"
     fi
-  done
+  done < <(claude_desktop_files)
   [ "$found" = 1 ] || warn "Couldn't find Claude's menu entry in ~/.local/share/applications to update."
 }
 
@@ -234,18 +318,14 @@ do_install() {
     distrobox create --yes --name "$CONTAINER_NAME" --image "$IMAGE"
   fi
 
-  # The container shares $HOME, so a temp file there is visible inside it.
-  INNER_TMP="$(mktemp "$HOME/.claude-desktop-steamos.XXXXXX")"
-  trap 'rm -f "$INNER_TMP"' EXIT
-  printf '%s\n' "$CONTAINER_SCRIPT" > "$INNER_TMP"
-
-  distrobox enter "$CONTAINER_NAME" -- bash "$INNER_TMP" \
+  run_in_container "$CONTAINER_SCRIPT" \
     "$KEY_URL" "$KEY_FINGERPRINT" "$APT_REPO_URL" "$CONTAINER_FONT_CACHE" "$export_flag" \
     "$PASSWORD_STORE"
 
   if [ "$export_flag" = "1" ]; then
     install_launcher
     patch_desktop_files
+    copy_icons
   fi
 
   info "Done."
@@ -279,6 +359,9 @@ do_update() {
   distrobox enter "$CONTAINER_NAME" -- bash -c \
     "sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
        -o Dpkg::Options::=--force-confold --only-upgrade claude-desktop"
+  if [ -n "$(claude_desktop_files)" ]; then
+    copy_icons
+  fi
   info "Done."
   if [ "$mode" = "manual" ]; then
     echo "Start Claude again from the app menu."
@@ -358,6 +441,14 @@ do_uninstall() {
   if [ -f "$SYSTEMD_USER_DIR/$UNIT_NAME.timer" ]; then
     do_disable_auto_update
   fi
+  local f icon
+  while IFS= read -r f; do
+    icon="$(grep -m1 '^Icon=' "$f" | cut -d= -f2-)"
+    case "$icon" in
+      ""|/*) ;;
+      *) find "$HOME/.local/share/icons" -type f -name "${icon}.*" -delete 2>/dev/null || true ;;
+    esac
+  done < <(claude_desktop_files)
   if container_exists; then
     info "Removing the app menu entry"
     distrobox enter "$CONTAINER_NAME" -- distrobox-export --app claude-desktop --delete || true

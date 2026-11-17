@@ -181,6 +181,8 @@ Make sure `~/.local/bin` is on your `PATH`.
 
 **KDE Wallet password prompts, or signed out after a reboot:** see [Staying signed in](#staying-signed-in). Claude's logs show which store it used: `find ~/.config/Claude -name "*.log" -exec grep -h "safeStorage\]" {} + | tail`. Lines with `preflight-unavailable` or `backend=basic_text` mean it started without the wallet.
 
+**Claude's icon is blank in the taskbar or app menu while Claude is closed:** run `bash setup.sh` again. It copies Claude's icon out of the container so SteamOS can show it. (Uninstalling a *second* container with the same app can also remove the shared icon; the same command brings it back.)
+
 **Sign-in doesn't come back to the app:** make sure a default web browser is set in KDE's System Settings.
 
 **Automatic updates never seem to run:** check `journalctl --user -u claude-desktop-update`. "Claude is open; skipping" means Claude was open at every check; close it for a while, or run `bash setup.sh --update`.
