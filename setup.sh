@@ -459,7 +459,8 @@ do_uninstall() {
   fi
   rm -rf "$HOME/.cache/$CONTAINER_FONT_CACHE"
   rm -f "$LAUNCHER"
-  info "Done. Your Claude settings are still in ~/.config/Claude; delete that folder to remove them too."
+  info "Done. Claude's own data is still in ~/.config/Claude (this can be over 10 GB)."
+  echo "To remove it too: rm -rf ~/.config/Claude"
 }
 
 main() {

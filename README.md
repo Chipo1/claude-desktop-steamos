@@ -16,7 +16,7 @@ But there is a trap (see [The font problem](#the-font-problem-squares-instead-of
 
 ## Quick start
 
-You'll need a few GB of free space in your home folder: the Ubuntu container with Claude and its dependencies, plus the virtual machine Cowork sets up the first time you use it.
+Plan for **around 20 GB of free space** in your home folder. On the test machine, the Ubuntu container with Claude took about 4 GB, and Claude's own data folder (`~/.config/Claude`) grew to 13 GB, 12 GB of it for the virtual machine Cowork runs its tasks in. On a 64 GB Steam Deck, check your space first.
 
 In **Desktop Mode** (Steam button → Power → Switch to Desktop), open **Konsole** and run:
 
@@ -42,7 +42,7 @@ Other options:
 bash setup.sh --update               # update Claude Desktop now
 bash setup.sh --enable-auto-update   # keep it updated in the background
 bash setup.sh --fix-host-fonts       # fix squares-instead-of-text on SteamOS
-bash setup.sh --uninstall            # remove the container and menu entry
+bash setup.sh --uninstall            # remove the container and menu entry (keeps ~/.config/Claude)
 bash setup.sh --help
 ```
 
