@@ -16,6 +16,8 @@ But there is a trap (see [The font problem](#the-font-problem-squares-instead-of
 
 ## Quick start
 
+You'll need a few GB of free space in your home folder: the Ubuntu container with Claude and its dependencies, plus the virtual machine Cowork sets up the first time you use it.
+
 In **Desktop Mode** (Steam button → Power → Switch to Desktop), open **Konsole** and run:
 
 ```bash
@@ -56,6 +58,8 @@ On Linux, Claude encrypts your saved sign-in with your desktop's keyring, which 
 **Don't let KDE reopen Claude at login.** If Claude is still open when you shut down, Plasma reopens it by itself at the next login, bypassing the launcher and often before the wallet is running. Either quit Claude (tray icon → Quit) before shutting down, or go to **System Settings → Session → Desktop Session** and choose to start with an empty session. To have Claude open at every login, add it under **System Settings → Autostart** instead, which goes through the launcher.
 
 **Fix part 2 (your choice):** the wallet has to be unlocked whenever Claude starts.
+
+If you've never used KDE Wallet before, the first launch opens KDE's "create wallet" wizard: choose **Blowfish**, and leave the password empty if you don't want any prompts (see the trade-off below).
 
 - **Blank wallet password (no prompts at all):** open **KDE Wallet Manager** from the app menu, select `kdewallet`, choose **Change Password**, enter your current wallet password, and leave both new-password fields empty. Then log out and back in. This also stops the prompts from other apps that use the wallet. *Trade-off:* everything in the wallet (app sign-ins, saved Wi-Fi passwords) is then stored without a password protecting it, so anyone with access to your files or your unlocked machine can read it. On a living-room console that's often acceptable.
   - If KDE Wallet Manager isn't installed, get it from Discover or run `flatpak install flathub org.kde.kwalletmanager`.
